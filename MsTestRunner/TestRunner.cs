@@ -1,25 +1,45 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿// --------------------------------------------------------------------------------------------------
+//  <copyright file="TestRunner.cs" company="DNS Technology Pty Ltd.">
+//    Copyright (c) 2015 DNS Technology Pty Ltd. All rights reserved.
+//  </copyright>
+// --------------------------------------------------------------------------------------------------
 
 namespace MsTestRunner
 {
+    using System;
     using System.Collections.Concurrent;
+    using System.Collections.Generic;
     using System.Diagnostics;
-    using System.Dynamic;
     using System.IO;
+    using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
-    using System.Security.Permissions;
     using System.Threading;
+    using System.Threading.Tasks;
 
     public sealed class TestRunner
     {
+        #region Fields
+
         private readonly HashSet<string> fileNames = new HashSet<string>();
 
+        private readonly string path;
+
         private readonly List<Func<int>> testList = new List<Func<int>>();
+
+        #endregion
+
+        #region Constructors and Destructors
+
+        public TestRunner(string path)
+        {
+            this.path = path;
+            Directory.CreateDirectory(this.path);
+        }
+
+        #endregion
+
+        #region Public Methods and Operators
 
         public void AddTestAssembly(string filePath)
         {
@@ -33,6 +53,30 @@ namespace MsTestRunner
                     {
                         if (type.GetCustomAttributes().Any(c => c.GetType().Name == "TestClassAttribute") && !type.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute"))
                         {
+                            var deploymentItems = type.GetCustomAttributes().Where(c => c.GetType().Name == "DeploymentItemAttribute");
+                            foreach (var deploymentItem in deploymentItems.Select(
+                                d =>
+                                    {
+                                        dynamic item = d;
+                                        return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
+                                    }))
+                            {
+                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), deploymentItem.Item1);
+                                var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
+
+                                if (File.Exists(destPath))
+                                {
+                                    Trace.TraceWarning(
+                                        "The Deployment Item {0} on {1} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items",
+                                        deploymentItem.Item1,
+                                        type.FullName);
+                                }
+                                else
+                                {
+                                    File.Copy(sourcePath, destPath);    
+                                }
+                            }
+
                             testClasses.Add(type);
                         }
                     }
@@ -54,7 +98,12 @@ namespace MsTestRunner
                 var ci = testClassType.GetMethods().FirstOrDefault(m => m.IsStatic && m.GetCustomAttributes().Any(c => c.GetType().Name == "ClassInitializeAttribute"));
                 if (ci != null)
                 {
-                    ci.Invoke(null, new object[] { null });
+                    ci.Invoke(
+                        null,
+                        new object[]
+                        {
+                            null
+                        });
                 }
 
                 if (!testClassType.IsAbstract)
@@ -66,10 +115,12 @@ namespace MsTestRunner
 
         public TestRunResult Execute()
         {
+            Directory.SetCurrentDirectory(this.path);
             var result = new TestRunResult();
             result.Start();
             Parallel.ForEach(
                 this.testList,
+                new ParallelOptions() { MaxDegreeOfParallelism = 1 },
                 a =>
                     {
                         try
@@ -80,10 +131,15 @@ namespace MsTestRunner
                         catch (Exception e)
                         {
                             result.Failure(e.ToString());
-                        } 
+                        }
                     });
+            result.Stop();
             return result;
         }
+
+        #endregion
+
+        #region Methods
 
         private Func<int> CreateTestInvoker(Type testClassType)
         {
@@ -92,9 +148,7 @@ namespace MsTestRunner
             var testMethods = new List<Expression>(allMethods.Count);
             testMethods.Add(Expression.Assign(v, Expression.New(testClassType.GetConstructor(new Type[0]))));
 
-            var initMethod =
-                allMethods.FirstOrDefault(
-                    a => a.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute"));
+            var initMethod = allMethods.FirstOrDefault(a => a.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute"));
             if (initMethod != null)
             {
                 testMethods.Add(Expression.Call(v, initMethod));
@@ -104,38 +158,74 @@ namespace MsTestRunner
             for (int i = 0; i < allMethods.Count; i++)
             {
                 var m = allMethods[i];
-                if (m.ReturnType == typeof(void) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute") && !m.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute"))
+                if (m.ReturnType == typeof(void) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute")
+                    && !m.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute"))
                 {
-                    testMethods.Add(Expression.Call(v, m));
+                    var expectedExceptionType = m.GetCustomAttributes().Where(c => c.GetType().Name == "ExpectedExceptionAttribute").Select(c => (Type)((dynamic)c).ExceptionType).FirstOrDefault();
+                    if (expectedExceptionType != null)
+                    {
+                        var tryBlock = Expression.Block(
+                            Expression.Call(v, m),
+                            Expression.Throw(
+                                Expression.New(
+                                    typeof(AssertFailedException).GetConstructor(
+                                        new Type[]
+                                        {
+                                            typeof(string)
+                                        }),
+                                    Expression.Constant(string.Format("Expected exception {0} was not thrown", expectedExceptionType.Name)))));
+                        var tryCatch = Expression.TryCatch(tryBlock, Expression.Catch(expectedExceptionType, Expression.Empty()));
+                        testMethods.Add(tryCatch);
+                    }
+                    else
+                    {
+                        testMethods.Add(Expression.Call(v, m));
+                    }
+
                     testCount++;
                 }
             }
 
             testMethods.Add(Expression.Constant(testCount));
-            return Expression.Lambda<Func<int>>(Expression.Block(new[] { v }, testMethods)).Compile();
+            return Expression.Lambda<Func<int>>(
+                Expression.Block(
+                    new[]
+                    {
+                        v
+                    },
+                    testMethods)).Compile();
         }
+
+        #endregion
     }
 
     public sealed class TestRunResult
     {
-        private Stopwatch timer;
+        #region Fields
 
-        private long succeeded;
         private long failed;
+
         private long ignored;
 
-        public TestRunResult()
-        {
-            this.FailureMessages = new ConcurrentBag<string>();
-        }
+        private long succeeded;
 
-        public long Succeeded
+        private Stopwatch timer;
+
+        private readonly ConcurrentQueue<string> failureMessagesQueue = new ConcurrentQueue<string>();
+
+        #endregion
+
+        #region Public Properties
+
+        public long Failed
         {
             get
             {
-                return Interlocked.Read(ref this.succeeded);
+                return Interlocked.Read(ref this.failed);
             }
         }
+
+        public IList<string> FailureMessages { get; private set; }
 
         public long Ignored
         {
@@ -145,11 +235,11 @@ namespace MsTestRunner
             }
         }
 
-        public long Failed
+        public long Succeeded
         {
             get
             {
-                return Interlocked.Read(ref this.failed);
+                return Interlocked.Read(ref this.succeeded);
             }
         }
 
@@ -161,17 +251,14 @@ namespace MsTestRunner
             }
         }
 
-        public ConcurrentBag<string> FailureMessages { get; private set; }
+        #endregion
 
-        public void Success(int testCount)
-        {
-            Interlocked.Add(ref this.succeeded, testCount);
-        }
+        #region Public Methods and Operators
 
         public void Failure(string message)
         {
             Interlocked.Increment(ref this.failed);
-            this.FailureMessages.Add(message);
+            this.failureMessagesQueue.Enqueue(message);
         }
 
         public void Start()
@@ -181,7 +268,15 @@ namespace MsTestRunner
 
         public void Stop()
         {
+            this.FailureMessages = this.failureMessagesQueue.ToList();
             this.timer.Stop();
         }
+
+        public void Success(int testCount)
+        {
+            Interlocked.Add(ref this.succeeded, testCount);
+        }
+
+        #endregion
     }
 }

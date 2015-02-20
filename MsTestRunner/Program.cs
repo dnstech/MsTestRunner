@@ -1,19 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿// --------------------------------------------------------------------------------------------------
+//  <copyright file="Program.cs" company="DNS Technology Pty Ltd.">
+//    Copyright (c) 2015 DNS Technology Pty Ltd. All rights reserved.
+//  </copyright>
+// --------------------------------------------------------------------------------------------------
 
 namespace MsTestRunner
 {
+    using System;
     using System.IO;
-    using System.Reflection;
 
-    class Program
+    internal class Program
     {
-        static void Main(string[] args)
+        #region Methods
+
+        private static void Main(string[] args)
         {
-            var testRunner = new TestRunner();
+            var testRunner = new TestRunner(Path.Combine(Path.GetTempPath(), DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
             foreach (var path in args)
             {
                 if (File.Exists(Path.GetFullPath(path)))
@@ -38,16 +40,34 @@ namespace MsTestRunner
             Console.WriteLine("{0} Failed", result.Failed);
 
             Console.ForegroundColor = ConsoleColor.White;
-            foreach (var failure in result.FailureMessages)
+            var currentFailure = 0;
+            var lastKey = ConsoleKey.Spacebar;
+            while (lastKey != ConsoleKey.Escape && currentFailure < result.FailureMessages.Count)
             {
-                Console.WriteLine(failure);
+                Console.WriteLine("Failure #{0} of {1}", currentFailure + 1, result.FailureMessages.Count + 1);
+                Console.WriteLine(result.FailureMessages[currentFailure]);
                 Console.WriteLine();
-                Console.ReadKey();
+                var key = Console.ReadKey();
+                if (key.Key == ConsoleKey.UpArrow)
+                {
+                    Console.Clear();
+                    currentFailure--;
+                }
+                else
+                {
+                    if (key.Key == ConsoleKey.DownArrow)
+                    {
+                        Console.Clear();
+                        currentFailure++;
+                    }
+                }
             }
 
             Console.ForegroundColor = ConsoleColor.Gray;
 
             Console.ReadKey();
         }
+
+        #endregion
     }
 }
