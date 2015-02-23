@@ -44,7 +44,7 @@ namespace MsTestRunner
             var lastKey = Console.ReadKey().Key;
             while (lastKey != ConsoleKey.Escape && currentFailure < result.FailureMessages.Count)
             {
-                Console.WriteLine("Failure #{0} of {1}", currentFailure + 1, result.FailureMessages.Count + 1);
+                Console.WriteLine("Failure #{0} of {1}", currentFailure + 1, result.FailureMessages.Count);
                 Console.WriteLine(result.FailureMessages[currentFailure]);
                 Console.WriteLine();
                 var key = Console.ReadKey();
