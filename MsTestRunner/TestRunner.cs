@@ -73,7 +73,18 @@ namespace MsTestRunner
                                 }
                                 else
                                 {
-                                    File.Copy(sourcePath, destPath);    
+                                    if (!File.Exists(sourcePath))
+                                    {
+                                        Trace.TraceWarning(
+                                            "The Deployment File {0} for {1} was not found",
+                                            sourcePath,
+                                            type.FullName);
+                                    } 
+                                    else 
+                                    {
+                                        File.Copy(sourcePath, destPath);        
+                                    }
+                                    
                                 }
                             }
 
