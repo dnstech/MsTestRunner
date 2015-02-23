@@ -41,14 +41,14 @@ namespace MsTestRunner
 
             Console.ForegroundColor = ConsoleColor.White;
             var currentFailure = 0;
-            var lastKey = ConsoleKey.Spacebar;
+            var lastKey = Console.ReadKey().Key;
             while (lastKey != ConsoleKey.Escape && currentFailure < result.FailureMessages.Count)
             {
                 Console.WriteLine("Failure #{0} of {1}", currentFailure + 1, result.FailureMessages.Count + 1);
                 Console.WriteLine(result.FailureMessages[currentFailure]);
                 Console.WriteLine();
                 var key = Console.ReadKey();
-                if (key.Key == ConsoleKey.UpArrow)
+                if (key.Key == ConsoleKey.UpArrow && currentFailure > 0)
                 {
                     Console.Clear();
                     currentFailure--;

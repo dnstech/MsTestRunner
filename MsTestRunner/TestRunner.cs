@@ -61,7 +61,7 @@ namespace MsTestRunner
                                         return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
                                     }))
                             {
-                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), deploymentItem.Item1);
+                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), Path.GetFileName(deploymentItem.Item1));
                                 var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
 
                                 if (File.Exists(destPath))
