@@ -61,7 +61,7 @@ namespace MsTestRunner
                                         return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
                                     }))
                             {
-                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), deploymentItem.Item1);
+                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), Path.GetFileName(deploymentItem.Item1));
                                 var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
 
                                 if (File.Exists(destPath))
@@ -73,7 +73,18 @@ namespace MsTestRunner
                                 }
                                 else
                                 {
-                                    File.Copy(sourcePath, destPath);    
+                                    if (!File.Exists(sourcePath))
+                                    {
+                                        Trace.TraceWarning(
+                                            "The Deployment File {0} for {1} was not found",
+                                            sourcePath,
+                                            type.FullName);
+                                    } 
+                                    else 
+                                    {
+                                        File.Copy(sourcePath, destPath);        
+                                    }
+                                    
                                 }
                             }
 
