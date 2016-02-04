@@ -17,21 +17,33 @@ namespace MsTestRunner
 
         private static void Main(string[] args)
         {
-            var testRunner = new TestRunner(Path.Combine(Path.GetTempPath(), DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
+            var testRunner = new TestRunner(Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
             var filter = false;
-            foreach (var path in args)
+            var parallelism = false;
+            foreach (var arg in args)
             {
                 if (filter)
                 {
                     filter = false;
-                    testRunner.AddFilter(path);
+                    testRunner.AddFilter(arg);
                 }
-                else if (path.Equals("-f", StringComparison.OrdinalIgnoreCase))
+                else if (parallelism)
+                {
+                    parallelism = false;
+                    testRunner.Parallelism = int.Parse(arg);
+                }
+                else if (arg.Equals("-f", StringComparison.OrdinalIgnoreCase))
                 {
                     filter = true;
                 }
-                else if (!path.StartsWith("-"))
+                else if (arg.Equals("-p", StringComparison.OrdinalIgnoreCase))
                 {
+                    parallelism = true;
+                }
+                else if (!arg.StartsWith("-"))
+                {
+                    var path = arg.StartsWith("/testcontainer:") ? arg.Substring("/testcontainer:".Length) : arg;
+
                     if (File.Exists(Path.GetFullPath(path)))
                     {
                         testRunner.AddTestAssembly(path);
@@ -52,7 +64,7 @@ namespace MsTestRunner
             if (result.Succeeded > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("{0} Suceeded", result.Succeeded);
+                Console.WriteLine("{0} Succeeded", result.Succeeded);
             }
 
             if (result.Failed > 0)

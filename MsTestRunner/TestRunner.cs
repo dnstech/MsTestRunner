@@ -7,14 +7,12 @@
 namespace MsTestRunner
 {
     using System;
-    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
-    using System.Threading;
     using System.Threading.Tasks;
 
     public sealed class TestRunner
@@ -24,6 +22,7 @@ namespace MsTestRunner
         public TestRunner(string path)
         {
             this.path = path;
+            this.Parallelism = 4;
         }
 
         #endregion
@@ -32,6 +31,8 @@ namespace MsTestRunner
         {
             this.filters.Add(text);
         }
+
+        public int Parallelism { get; set; }
 
         #region Fields
 
@@ -66,9 +67,9 @@ namespace MsTestRunner
                             foreach (var deploymentItem in deploymentItems)
                             {
                                 var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
-                                if (copyFromFolder.EndsWith("bin\\Debug"))
+                                if (copyFromFolder.Contains("\\bin\\"))
                                 {
-                                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.Length - "bin\\Debug".Length);
+                                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase));
                                 }
 
                                 var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
@@ -173,7 +174,7 @@ namespace MsTestRunner
                 this.testList,
                 new ParallelOptions()
                 {
-                    MaxDegreeOfParallelism = 1
+                    MaxDegreeOfParallelism = this.Parallelism
                 },
                 a =>
                     {
@@ -278,100 +279,6 @@ namespace MsTestRunner
         private static bool IsIgnored(MethodInfo m)
         {
             return m.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute");
-        }
-
-        #endregion
-    }
-
-    internal struct TestItem
-    {
-        public TestItem(string name, Func<int> execute)
-        {
-            this.Name = name;
-            this.Execute = execute;
-        }
-
-        public readonly string Name;
-
-        public readonly Func<int> Execute;
-    }
-
-    public sealed class TestRunResult
-    {
-        #region Fields
-
-        private long failed;
-
-        private long ignored;
-
-        private long succeeded;
-
-        private Stopwatch timer;
-
-        private readonly ConcurrentQueue<string> failureMessagesQueue = new ConcurrentQueue<string>();
-
-        #endregion
-
-        #region Public Properties
-
-        public long Failed
-        {
-            get
-            {
-                return Interlocked.Read(ref this.failed);
-            }
-        }
-
-        public IList<string> FailureMessages { get; private set; }
-
-        public long Ignored
-        {
-            get
-            {
-                return Interlocked.Read(ref this.ignored);
-            }
-        }
-
-        public long Succeeded
-        {
-            get
-            {
-                return Interlocked.Read(ref this.succeeded);
-            }
-        }
-
-        public TimeSpan TimeTaken
-        {
-            get
-            {
-                return this.timer.Elapsed;
-            }
-        }
-
-        #endregion
-
-        #region Public Methods and Operators
-
-        public void Failure(string message)
-        {
-            Interlocked.Increment(ref this.failed);
-            this.failureMessagesQueue.Enqueue(message);
-        }
-
-        public void Start()
-        {
-            this.timer = Stopwatch.StartNew();
-        }
-
-        public void Stop()
-        {
-            this.FailureMessages = this.failureMessagesQueue.ToList();
-            this.timer.Stop();
-        }
-
-        public void Success(int testCount)
-        {
-            Interlocked.Add(ref this.succeeded, testCount);
         }
 
         #endregion
