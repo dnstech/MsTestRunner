@@ -85,7 +85,9 @@ namespace MsTestRunner
         {
             for (int i = 0; i < result.FailureMessages.Count; i++)
             {
+                Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("Failure #{0} of {1}", i + 1, result.FailureMessages.Count);
+                Console.ForegroundColor = ConsoleColor.White;
                 Console.WriteLine(result.FailureMessages[i]);
                 Console.WriteLine();
             }
