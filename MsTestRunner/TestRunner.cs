@@ -64,7 +64,7 @@ namespace MsTestRunner
                         if (IsTestClass(type) && !IsIgnored(type) && this.IsIncludedInFilter(type))
                         {
                             var deploymentItems = DeploymentItems(type);
-                            this.IncludeDeploymentItems(filePath, deploymentItems);
+                            this.IncludeDeploymentItems(assemblyToLoad, deploymentItems);
                             testClasses.Add(type);
                         }
                     }
@@ -84,9 +84,10 @@ namespace MsTestRunner
             foreach (var deploymentItem in deploymentItems)
             {
                 var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
-                if (copyFromFolder.Contains("\\bin\\"))
+                var binIndex = copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase);
+                if (binIndex != -1)
                 {
-                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase));
+                    copyFromFolder = copyFromFolder.Substring(0, binIndex);
                 }
 
                 var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
@@ -151,13 +152,15 @@ namespace MsTestRunner
             {
                 if (File.Exists(filePath.Value))
                 {
-                    Trace.TraceWarning("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
                 }
                 else
                 {
                     if (!File.Exists(filePath.Key))
                     {
-                        Trace.TraceWarning("The Deployment File {0} was not found", filePath.Key);
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("The Deployment File {0} was not found", filePath.Key);
                     }
                     else
                     {

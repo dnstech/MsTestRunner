@@ -15,7 +15,7 @@ namespace MsTestRunner
     {
         #region Methods
 
-        private static void Main(string[] args)
+        private static int Main(string[] args)
         {
             var testRunner = new TestRunner(Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
             var filter = false;
@@ -91,6 +91,8 @@ namespace MsTestRunner
             {
                 Console.ReadKey();
             }
+
+            return result.Failed < int.MaxValue ? (int)result.Failed : int.MaxValue;
         }
 
         private static void ListFailures(TestRunResult result)
