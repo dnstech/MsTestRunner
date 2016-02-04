@@ -64,22 +64,7 @@ namespace MsTestRunner
                         if (IsTestClass(type) && !IsIgnored(type) && this.IsIncludedInFilter(type))
                         {
                             var deploymentItems = DeploymentItems(type);
-                            foreach (var deploymentItem in deploymentItems)
-                            {
-                                var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
-                                if (copyFromFolder.Contains("\\bin\\"))
-                                {
-                                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase));
-                                }
-
-                                var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
-                                if (!this.deploymentFiles.ContainsKey(sourcePath))
-                                {
-                                    var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
-                                    this.deploymentFiles[sourcePath] = destPath;
-                                }
-                            }
-
+                            this.IncludeDeploymentItems(filePath, deploymentItems);
                             testClasses.Add(type);
                         }
                     }
@@ -94,6 +79,25 @@ namespace MsTestRunner
             this.AddTestClasses(testClasses);
         }
 
+        private void IncludeDeploymentItems(string filePath, IEnumerable<Tuple<string, string>> deploymentItems)
+        {
+            foreach (var deploymentItem in deploymentItems)
+            {
+                var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
+                if (copyFromFolder.Contains("\\bin\\"))
+                {
+                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase));
+                }
+
+                var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
+                if (!this.deploymentFiles.ContainsKey(sourcePath))
+                {
+                    var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
+                    this.deploymentFiles[sourcePath] = destPath;
+                }
+            }
+        }
+
         private bool IsIncludedInFilter(Type type)
         {
             return this.filters.Count == 0 || this.filters.Any(f => type.FullName.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1);
@@ -101,7 +105,7 @@ namespace MsTestRunner
 
         private static IEnumerable<Tuple<string, string>> DeploymentItems(Type type)
         {
-            return type.GetCustomAttributes().Where(c => c.GetType().Name == "DeploymentItemAttribute").Select(
+            return type.GetCustomAttributes(true).Where(c => c.GetType().Name == "DeploymentItemAttribute").Select(
                 d =>
                     {
                         dynamic item = d;
