@@ -1,6 +1,6 @@
 ﻿// --------------------------------------------------------------------------------------------------
 //  <copyright file="TestRunner.cs" company="DNS Technology Pty Ltd.">
-//    Copyright (c) 2015 DNS Technology Pty Ltd. All rights reserved.
+//    Copyright (c) 2016 DNS Technology Pty Ltd. All rights reserved.
 //  </copyright>
 // --------------------------------------------------------------------------------------------------
 
@@ -19,23 +19,31 @@ namespace MsTestRunner
 
     public sealed class TestRunner
     {
-        #region Fields
-
-        private readonly HashSet<string> fileNames = new HashSet<string>();
-
-        private readonly string path;
-
-        private readonly List<Func<int>> testList = new List<Func<int>>();
-
-        #endregion
-
         #region Constructors and Destructors
 
         public TestRunner(string path)
         {
             this.path = path;
-            Directory.CreateDirectory(this.path);
         }
+
+        #endregion
+
+        public void AddFilter(string text)
+        {
+            this.filters.Add(text);
+        }
+
+        #region Fields
+
+        private readonly Dictionary<string, string> deploymentFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly HashSet<string> testAssemblyFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly string path;
+
+        private readonly List<TestItem> testList = new List<TestItem>();
+
+        private readonly List<string> filters = new List<string>();
 
         #endregion
 
@@ -44,47 +52,30 @@ namespace MsTestRunner
         public void AddTestAssembly(string filePath)
         {
             var testClasses = new List<Type>();
-            if (this.fileNames.Add(Path.GetFileName(filePath)))
+            if (this.testAssemblyFileNames.Add(Path.GetFileName(filePath)))
             {
                 try
                 {
-                    var allTypes = Assembly.LoadFrom(Path.GetFullPath(filePath)).GetTypes();
+                    var assemblyToLoad = Path.GetFullPath(filePath);
+                    var allTypes = Assembly.LoadFrom(assemblyToLoad).GetTypes();
                     foreach (var type in allTypes)
                     {
-                        if (type.GetCustomAttributes().Any(c => c.GetType().Name == "TestClassAttribute") && !type.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute"))
+                        if (IsTestClass(type) && !IsIgnored(type) && this.IsIncludedInFilter(type))
                         {
-                            var deploymentItems = type.GetCustomAttributes().Where(c => c.GetType().Name == "DeploymentItemAttribute");
-                            foreach (var deploymentItem in deploymentItems.Select(
-                                d =>
-                                    {
-                                        dynamic item = d;
-                                        return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
-                                    }))
+                            var deploymentItems = DeploymentItems(type);
+                            foreach (var deploymentItem in deploymentItems)
                             {
-                                var sourcePath = Path.Combine(Path.GetDirectoryName(filePath), Path.GetFileName(deploymentItem.Item1));
-                                var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
-
-                                if (File.Exists(destPath))
+                                var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
+                                if (copyFromFolder.EndsWith("bin\\Debug"))
                                 {
-                                    Trace.TraceWarning(
-                                        "The Deployment Item {0} on {1} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items",
-                                        deploymentItem.Item1,
-                                        type.FullName);
+                                    copyFromFolder = copyFromFolder.Substring(0, copyFromFolder.Length - "bin\\Debug".Length);
                                 }
-                                else
+
+                                var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
+                                if (!this.deploymentFiles.ContainsKey(sourcePath))
                                 {
-                                    if (!File.Exists(sourcePath))
-                                    {
-                                        Trace.TraceWarning(
-                                            "The Deployment File {0} for {1} was not found",
-                                            sourcePath,
-                                            type.FullName);
-                                    } 
-                                    else 
-                                    {
-                                        File.Copy(sourcePath, destPath);        
-                                    }
-                                    
+                                    var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
+                                    this.deploymentFiles[sourcePath] = destPath;
                                 }
                             }
 
@@ -102,46 +93,109 @@ namespace MsTestRunner
             this.AddTestClasses(testClasses);
         }
 
+        private bool IsIncludedInFilter(Type type)
+        {
+            return this.filters.Count == 0 || this.filters.Any(f => type.FullName.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1);
+        }
+
+        private static IEnumerable<Tuple<string, string>> DeploymentItems(Type type)
+        {
+            return type.GetCustomAttributes().Where(c => c.GetType().Name == "DeploymentItemAttribute").Select(
+                d =>
+                    {
+                        dynamic item = d;
+                        return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
+                    });
+        }
+
+        private static bool IsTestClass(Type type)
+        {
+            return type.GetCustomAttributes().Any(c => c.GetType().Name == "TestClassAttribute");
+        }
+
+        private static bool IsIgnored(Type type)
+        {
+            return type.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute");
+        }
+
         public void AddTestClasses(IEnumerable<Type> testClassTypes)
         {
             foreach (var testClassType in testClassTypes)
             {
-                var ci = testClassType.GetMethods().FirstOrDefault(m => m.IsStatic && m.GetCustomAttributes().Any(c => c.GetType().Name == "ClassInitializeAttribute"));
-                if (ci != null)
-                {
-                    ci.Invoke(
-                        null,
-                        new object[]
-                        {
-                            null
-                        });
-                }
-
                 if (!testClassType.IsAbstract)
                 {
-                    this.testList.Add(this.CreateTestInvoker(testClassType));
+                    var ci = testClassType.GetMethods().FirstOrDefault(m => m.IsStatic && m.GetCustomAttributes().Any(c => c.GetType().Name == "ClassInitializeAttribute"));
+                    if (ci != null)
+                    {
+                        ci.Invoke(
+                            null,
+                            new object[]
+                            {
+                                null
+                            });
+                    }
+
+                    this.testList.Add(new TestItem(testClassType.FullName, this.CreateTestInvoker(testClassType)));
+                }
+            }
+        }
+
+        private void CopyDeploymentFiles()
+        {
+            foreach (var filePath in this.deploymentFiles)
+            {
+                if (File.Exists(filePath.Value))
+                {
+                    Trace.TraceWarning("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
+                }
+                else
+                {
+                    if (!File.Exists(filePath.Key))
+                    {
+                        Trace.TraceWarning("The Deployment File {0} was not found", filePath.Key);
+                    }
+                    else
+                    {
+                        File.Copy(filePath.Key, filePath.Value);
+                    }
                 }
             }
         }
 
         public TestRunResult Execute()
         {
+            Directory.CreateDirectory(this.path);
             Directory.SetCurrentDirectory(this.path);
+            this.CopyDeploymentFiles();
             var result = new TestRunResult();
             result.Start();
             Parallel.ForEach(
                 this.testList,
-                new ParallelOptions() { MaxDegreeOfParallelism = 1 },
+                new ParallelOptions()
+                {
+                    MaxDegreeOfParallelism = 1
+                },
                 a =>
                     {
                         try
                         {
-                            var testCount = a();
+                            var testCount = a.Execute();
                             result.Success(testCount);
+                        }
+                        catch (AssertFailedException e)
+                        {
+                            result.Failure(a.Name + " - " + e.Source + " - " + e.Message);
                         }
                         catch (Exception e)
                         {
-                            result.Failure(e.ToString());
+                            if (e.GetType().Name.StartsWith("AssertFailed"))
+                            {
+                                result.Failure(a.Name + " - " + e.Message);
+                            }
+                            else
+                            {
+                                result.Failure(a.Name + " - " + e.ToString());
+                            }
                         }
                     });
             result.Stop();
@@ -159,7 +213,7 @@ namespace MsTestRunner
             var testMethods = new List<Expression>(allMethods.Count);
             testMethods.Add(Expression.Assign(v, Expression.New(testClassType.GetConstructor(new Type[0]))));
 
-            var initMethod = allMethods.FirstOrDefault(a => a.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute"));
+            var initMethod = allMethods.FirstOrDefault(IsTestInitialize);
             if (initMethod != null)
             {
                 testMethods.Add(Expression.Call(v, initMethod));
@@ -169,10 +223,9 @@ namespace MsTestRunner
             for (int i = 0; i < allMethods.Count; i++)
             {
                 var m = allMethods[i];
-                if (m.ReturnType == typeof(void) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute")
-                    && !m.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute"))
+                if (IsTestMethod(m) && !IsIgnored(m))
                 {
-                    var expectedExceptionType = m.GetCustomAttributes().Where(c => c.GetType().Name == "ExpectedExceptionAttribute").Select(c => (Type)((dynamic)c).ExceptionType).FirstOrDefault();
+                    var expectedExceptionType = ExpectedExceptions(m).FirstOrDefault();
                     if (expectedExceptionType != null)
                     {
                         var tryBlock = Expression.Block(
@@ -207,7 +260,40 @@ namespace MsTestRunner
                     testMethods)).Compile();
         }
 
+        private static IEnumerable<Type> ExpectedExceptions(MethodInfo m)
+        {
+            return m.GetCustomAttributes().Where(c => c.GetType().Name == "ExpectedExceptionAttribute").Select(c => (Type)((dynamic)c).ExceptionType);
+        }
+
+        private static bool IsTestInitialize(MethodInfo a)
+        {
+            return a.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute");
+        }
+
+        private static bool IsTestMethod(MethodInfo m)
+        {
+            return m.ReturnType == typeof(void) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute");
+        }
+
+        private static bool IsIgnored(MethodInfo m)
+        {
+            return m.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute");
+        }
+
         #endregion
+    }
+
+    internal struct TestItem
+    {
+        public TestItem(string name, Func<int> execute)
+        {
+            this.Name = name;
+            this.Execute = execute;
+        }
+
+        public readonly string Name;
+
+        public readonly Func<int> Execute;
     }
 
     public sealed class TestRunResult
