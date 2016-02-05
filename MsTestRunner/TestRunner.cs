@@ -8,7 +8,6 @@ namespace MsTestRunner
 {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Linq.Expressions;
@@ -27,12 +26,12 @@ namespace MsTestRunner
 
         #endregion
 
+        public int Parallelism { get; set; }
+
         public void AddFilter(string text)
         {
             this.filters.Add(text);
         }
-
-        public int Parallelism { get; set; }
 
         #region Fields
 
@@ -79,58 +78,13 @@ namespace MsTestRunner
             this.AddTestClasses(testClasses);
         }
 
-        private void IncludeDeploymentItems(string filePath, IEnumerable<Tuple<string, string>> deploymentItems)
-        {
-            foreach (var deploymentItem in deploymentItems)
-            {
-                var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
-                var binIndex = copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase);
-                if (binIndex != -1)
-                {
-                    copyFromFolder = copyFromFolder.Substring(0, binIndex);
-                }
-
-                var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
-                if (!this.deploymentFiles.ContainsKey(sourcePath))
-                {
-                    var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
-                    this.deploymentFiles[sourcePath] = destPath;
-                }
-            }
-        }
-
-        private bool IsIncludedInFilter(Type type)
-        {
-            return this.filters.Count == 0 || this.filters.Any(f => type.FullName.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1);
-        }
-
-        private static IEnumerable<Tuple<string, string>> DeploymentItems(Type type)
-        {
-            return type.GetCustomAttributes(true).Where(c => c.GetType().Name == "DeploymentItemAttribute").Select(
-                d =>
-                    {
-                        dynamic item = d;
-                        return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
-                    });
-        }
-
-        private static bool IsTestClass(Type type)
-        {
-            return type.GetCustomAttributes().Any(c => c.GetType().Name == "TestClassAttribute");
-        }
-
-        private static bool IsIgnored(Type type)
-        {
-            return type.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute");
-        }
-
         public void AddTestClasses(IEnumerable<Type> testClassTypes)
         {
             foreach (var testClassType in testClassTypes)
             {
                 if (!testClassType.IsAbstract)
                 {
-                    var ci = testClassType.GetMethods().FirstOrDefault(m => m.IsStatic && m.GetCustomAttributes().Any(c => c.GetType().Name == "ClassInitializeAttribute"));
+                    var ci = testClassType.GetMethods().FirstOrDefault(IsClassInitialize);
                     if (ci != null)
                     {
                         ci.Invoke(
@@ -142,30 +96,6 @@ namespace MsTestRunner
                     }
 
                     this.testList.Add(new TestItem(testClassType.FullName, this.CreateTestInvoker(testClassType)));
-                }
-            }
-        }
-
-        private void CopyDeploymentFiles()
-        {
-            foreach (var filePath in this.deploymentFiles)
-            {
-                if (File.Exists(filePath.Value))
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
-                }
-                else
-                {
-                    if (!File.Exists(filePath.Key))
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("The Deployment File {0} was not found", filePath.Key);
-                    }
-                    else
-                    {
-                        File.Copy(filePath.Key, filePath.Value);
-                    }
                 }
             }
         }
@@ -214,6 +144,85 @@ namespace MsTestRunner
 
         #region Methods
 
+        private static IEnumerable<Tuple<string, string>> DeploymentItems(Type type)
+        {
+            return type.GetCustomAttributes(true).Where(c => c.GetType().Name == "DeploymentItemAttribute").Select(
+                d =>
+                {
+                    dynamic item = d;
+                    return Tuple.Create((string)item.Path, (string)item.OutputDirectory);
+                });
+        }
+
+        private static bool IsTestClass(Type type)
+        {
+            return type.GetCustomAttributes().Any(c => c.GetType().Name == "TestClassAttribute");
+        }
+
+        private static bool IsIgnored(Type type)
+        {
+            return type.GetCustomAttributes().Any(c => c.GetType().Name == "IgnoreAttribute");
+        }
+
+        private static bool IsClassInitialize(MethodInfo m)
+        {
+            return m.IsStatic && m.GetCustomAttributes().Any(c => c.GetType().Name == "ClassInitializeAttribute");
+        }
+
+        private void IncludeDeploymentItems(string filePath, IEnumerable<Tuple<string, string>> deploymentItems)
+        {
+            foreach (var deploymentItem in deploymentItems)
+            {
+                var copyFromFolder = Path.GetDirectoryName(filePath) ?? string.Empty;
+                var binIndex = copyFromFolder.LastIndexOf("\\bin\\", StringComparison.InvariantCultureIgnoreCase);
+                if (binIndex != -1)
+                {
+                    copyFromFolder = copyFromFolder.Substring(0, binIndex);
+                }
+
+                var sourcePath = Path.Combine(copyFromFolder, deploymentItem.Item1);
+                if (!this.deploymentFiles.ContainsKey(sourcePath))
+                {
+                    var destPath = Path.Combine(this.path, deploymentItem.Item2 ?? string.Empty, Path.GetFileName(deploymentItem.Item1));
+                    this.deploymentFiles[sourcePath] = destPath;
+                }
+            }
+        }
+
+        private bool IsIncludedInFilter(Type type)
+        {
+            return this.filters.Count == 0 || this.filters.Any(f => type.FullName.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1);
+        }
+
+        private void CopyDeploymentFiles()
+        {
+            foreach (var filePath in this.deploymentFiles)
+            {
+                if (File.Exists(filePath.Value))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
+                }
+                else
+                {
+                    if (!File.Exists(filePath.Key))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("The Deployment File {0} was not found", filePath.Key);
+                    }
+                    else
+                    {
+                        File.Copy(filePath.Key, filePath.Value);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates a single
+        /// </summary>
+        /// <param name="testClassType"></param>
+        /// <returns></returns>
         private Func<int> CreateTestInvoker(Type testClassType)
         {
             var v = Expression.Variable(testClassType, "test");
@@ -221,10 +230,26 @@ namespace MsTestRunner
             var testMethods = new List<Expression>(allMethods.Count);
             testMethods.Add(Expression.Assign(v, Expression.New(testClassType.GetConstructor(new Type[0]))));
 
-            var initMethod = allMethods.FirstOrDefault(IsTestInitialize);
-            if (initMethod != null)
+            var initMethods = allMethods.Where(IsTestInitialize).ToList();
+            if (initMethods.Count() > 1)
             {
-                testMethods.Add(Expression.Call(v, initMethod));
+                testMethods.Add(
+                    Expression.Throw(
+                        Expression.New(
+                            typeof(InvalidOperationException).GetConstructor(
+                                new Type[]
+                                {
+                                    typeof(string)
+                                }),
+                            Expression.Constant(string.Format("The test {0} has more than 1 method decorated with the [TestInitialize] attribute", testClassType.Name)))));
+            }
+            else
+            {
+                var initMethod = initMethods.FirstOrDefault();
+                if (initMethod != null)
+                {
+                    testMethods.Add(Expression.Call(v, initMethod));
+                }
             }
 
             var testCount = 0;
