@@ -290,8 +290,8 @@ namespace MsTestRunner
                                 resultsParameter,
                                 FailureMethod,
                                 testItemInstance,
-                                failureExceptionParameter), 
-                        Expression.Constant(0))));
+                                failureExceptionParameter),
+                        Expression.Constant(Task.FromResult(0)))));
             return Expression.Lambda<Func<TestItem, TestRunResult, Task<int>>>(tryCatchFinally, new[] { testItemInstance, resultsParameter }).Compile();
         }
 
