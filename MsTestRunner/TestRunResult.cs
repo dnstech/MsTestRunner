@@ -63,7 +63,26 @@ namespace MsTestRunner
 
         #region Public Methods and Operators
 
-        public void Failure(string message)
+        public void Failure(TestItem item, Exception error)
+        {
+            if (error is AssertFailedException)
+            {
+                this.ReportFailure(item.Name + " - " + error.Source + " - " + error.Message);
+            }
+            else
+            {
+                if (error.GetType().Name.StartsWith("AssertFailed"))
+                {
+                    this.ReportFailure(item.Name + " - " + error.Message);
+                }
+                else
+                {
+                    this.ReportFailure(item.Name + " - " + error);
+                }
+            }
+        }
+
+        private void ReportFailure(string message)
         {
             Interlocked.Increment(ref this.failed);
             this.failureMessagesQueue.Enqueue(message);
@@ -76,8 +95,8 @@ namespace MsTestRunner
 
         public void Stop()
         {
-            this.FailureMessages = this.failureMessagesQueue.ToList();
             this.timer.Stop();
+            this.FailureMessages = this.failureMessagesQueue.ToList();
         }
 
         public void Success(int testCount)

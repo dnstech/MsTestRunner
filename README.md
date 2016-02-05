@@ -36,3 +36,9 @@ The execution semantics of this test runner differ from that of Visual Studio's 
 * MsTestRunner will fail any test class that has more than one method decorated with [TestInitialize] including the full inheritance hierarchy. We believe that tests should be stable and unambigious, the expected order of multiple [TestInitialize] methods makes them unpredictable and can introduce subtle bugs in tests.
 * Failures are reported for the first failing test at the class level (i.e. if the first test method fails it is reported and further methods on the instance are not called)
 * No .trx output at the moment (planned)
+* Does not require a reference to Microsoft.VisualStudio.QualityTools.UnitTestFramework, nor does it require that it is built with a special Ms Test project. It just looks for classes and methods decorated with attributes that follow the names and rules below:
+** TestClassAttribute - must be declared on the class
+** ClassInitializeAttribute - must be zero or one static method inside a TestClassAttribute decorated class
+** ClassCleanupAttribute - must be zero or one static method inside a TestClassAttribute decorated class
+** TestInitializeAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class
+** TestCleanupAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class

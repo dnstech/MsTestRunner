@@ -16,6 +16,22 @@ namespace MsTestRunner
 
     public sealed class TestRunner
     {
+        private static readonly MethodInfo FailureMethod = typeof(TestRunResult).GetMethod("Failure", new[] { typeof(TestItem), typeof(Exception) });
+
+        #region Fields
+
+        private readonly Dictionary<string, string> deploymentFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly HashSet<string> testAssemblyFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly string path;
+
+        private readonly List<TestItem> testList = new List<TestItem>();
+
+        private readonly List<string> filters = new List<string>();
+
+        #endregion
+
         #region Constructors and Destructors
 
         public TestRunner(string path)
@@ -32,20 +48,6 @@ namespace MsTestRunner
         {
             this.filters.Add(text);
         }
-
-        #region Fields
-
-        private readonly Dictionary<string, string> deploymentFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        private readonly HashSet<string> testAssemblyFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        private readonly string path;
-
-        private readonly List<TestItem> testList = new List<TestItem>();
-
-        private readonly List<string> filters = new List<string>();
-
-        #endregion
 
         #region Public Methods and Operators
 
@@ -113,28 +115,10 @@ namespace MsTestRunner
                 {
                     MaxDegreeOfParallelism = this.Parallelism
                 },
-                a =>
+                async a =>
                     {
-                        try
-                        {
-                            var testCount = a.Execute();
-                            result.Success(testCount);
-                        }
-                        catch (AssertFailedException e)
-                        {
-                            result.Failure(a.Name + " - " + e.Source + " - " + e.Message);
-                        }
-                        catch (Exception e)
-                        {
-                            if (e.GetType().Name.StartsWith("AssertFailed"))
-                            {
-                                result.Failure(a.Name + " - " + e.Message);
-                            }
-                            else
-                            {
-                                result.Failure(a.Name + " - " + e.ToString());
-                            }
-                        }
+                        var testCount = await a.Execute(a, result);
+                        result.Success(testCount);
                     });
             result.Stop();
             return result;
@@ -223,12 +207,16 @@ namespace MsTestRunner
         /// </summary>
         /// <param name="testClassType"></param>
         /// <returns></returns>
-        private Func<int> CreateTestInvoker(Type testClassType)
+        private Func<TestItem, TestRunResult, Task<int>> CreateTestInvoker(Type testClassType)
         {
-            var v = Expression.Variable(testClassType, "test");
+            var testItemInstance = Expression.Parameter(typeof(TestItem), "testItem");
+            var testClassInstance = Expression.Variable(testClassType, "test");
+            var resultsParameter = Expression.Parameter(typeof(TestRunResult), "results");
             var allMethods = testClassType.GetRuntimeMethods().ToList();
-            var testMethods = new List<Expression>(allMethods.Count);
-            testMethods.Add(Expression.Assign(v, Expression.New(testClassType.GetConstructor(new Type[0]))));
+            var testMethods = new List<Expression>(allMethods.Count)
+                              {
+                                  Expression.Assign(testClassInstance, Expression.New(testClassType.GetConstructor(new Type[0])))
+                              };
 
             var initMethods = allMethods.Where(IsTestInitialize).ToList();
             if (initMethods.Count() > 1)
@@ -248,7 +236,7 @@ namespace MsTestRunner
                 var initMethod = initMethods.FirstOrDefault();
                 if (initMethod != null)
                 {
-                    testMethods.Add(Expression.Call(v, initMethod));
+                    testMethods.Add(Expression.Call(testClassInstance, initMethod));
                 }
             }
 
@@ -262,7 +250,7 @@ namespace MsTestRunner
                     if (expectedExceptionType != null)
                     {
                         var tryBlock = Expression.Block(
-                            Expression.Call(v, m),
+                            Expression.Call(testClassInstance, m),
                             Expression.Throw(
                                 Expression.New(
                                     typeof(AssertFailedException).GetConstructor(
@@ -276,21 +264,73 @@ namespace MsTestRunner
                     }
                     else
                     {
-                        testMethods.Add(Expression.Call(v, m));
+                        testMethods.Add(Expression.Call(testClassInstance, m));
                     }
 
                     testCount++;
                 }
             }
+            
+            testMethods.Add(Expression.Constant(Task.FromResult(testCount)));
+            var parameters = new[]
+                             {
+                                 resultsParameter,
+                                 testClassInstance
+                             };
 
-            testMethods.Add(Expression.Constant(testCount));
-            return Expression.Lambda<Func<int>>(
-                Expression.Block(
-                    new[]
-                    {
-                        v
-                    },
-                    testMethods)).Compile();
+            Expression finallyCall = CleanupCall(testClassType, resultsParameter, testItemInstance, testClassInstance, allMethods);
+
+            var failureExceptionParameter = Expression.Parameter(typeof(Exception));
+            var tryCatchFinally = Expression.TryCatchFinally(
+                Expression.Block(parameters, testMethods), 
+                finallyCall, 
+                Expression.Catch(failureExceptionParameter, 
+                    Expression.Block(parameters,     
+                        Expression.Call(
+                                resultsParameter,
+                                FailureMethod,
+                                testItemInstance,
+                                failureExceptionParameter), 
+                        Expression.Constant(0))));
+            return Expression.Lambda<Func<TestItem, TestRunResult, Task<int>>>(tryCatchFinally, new[] { testItemInstance, resultsParameter }).Compile();
+        }
+
+        private static Expression CleanupCall(Type testClassType, ParameterExpression resultsParameter, ParameterExpression testItemInstance, ParameterExpression testClassInstance, List<MethodInfo> allMethods)
+        {
+            var cleanupMethods = allMethods.Where(IsTestCleanup).ToList();
+            if (cleanupMethods.Count() > 1)
+            {
+                var exceptionExpression = Expression.New(
+                    typeof(InvalidOperationException).GetConstructor(
+                        new[]
+                        {
+                            typeof(string)
+                        }),
+                    Expression.Constant(string.Format("The test {0} has more than 1 method decorated with the [TestCleanup] attribute", testClassType.Name)));
+                return Expression.Call(
+                    resultsParameter,
+                    FailureMethod,
+                    testItemInstance,
+                    exceptionExpression);
+            }
+
+            var cleanupMethod = cleanupMethods.FirstOrDefault();
+            if (cleanupMethod != null)
+            {
+                var parameters = new[]
+                             {
+                                 resultsParameter,
+                                 testClassInstance
+                             };
+                return Expression.Block(parameters, Expression.IfThen(Expression.ReferenceNotEqual(testClassInstance, Expression.Constant(null)), Expression.Call(testClassInstance, cleanupMethod)));
+            }
+
+            return Expression.Empty();
+        }
+
+        private static bool IsTestCleanup(MethodInfo m)
+        {
+            return m.GetCustomAttributes().Any(c => c.GetType().Name == "TestCleanupAttribute");
         }
 
         private static IEnumerable<Type> ExpectedExceptions(MethodInfo m)
@@ -298,9 +338,9 @@ namespace MsTestRunner
             return m.GetCustomAttributes().Where(c => c.GetType().Name == "ExpectedExceptionAttribute").Select(c => (Type)((dynamic)c).ExceptionType);
         }
 
-        private static bool IsTestInitialize(MethodInfo a)
+        private static bool IsTestInitialize(MethodInfo m)
         {
-            return a.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute");
+            return m.GetCustomAttributes().Any(c => c.GetType().Name == "TestInitializeAttribute");
         }
 
         private static bool IsTestMethod(MethodInfo m)

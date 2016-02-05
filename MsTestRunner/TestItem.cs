@@ -1,10 +1,11 @@
 ﻿namespace MsTestRunner
 {
     using System;
+    using System.Threading.Tasks;
 
-    internal struct TestItem
+    public struct TestItem
     {
-        public TestItem(string name, Func<int> execute)
+        public TestItem(string name, Func<TestItem, TestRunResult, Task<int>> execute)
         {
             this.Name = name;
             this.Execute = execute;
@@ -12,6 +13,6 @@
 
         public readonly string Name;
 
-        public readonly Func<int> Execute;
+        public readonly Func<TestItem, TestRunResult, Task<int>> Execute;
     }
 }
