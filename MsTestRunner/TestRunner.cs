@@ -117,8 +117,16 @@ namespace MsTestRunner
                 },
                 async a =>
                     {
-                        var testCount = await a.Execute(a, result);
-                        result.Success(testCount);
+                        try
+                        {
+                            var t = a.Execute(a, result);
+                            var testCount = await t;
+                            result.Success(testCount);
+                        }
+                        catch (Exception ex)
+                        {
+                            result.Failure(a, ex);
+                        }
                     });
             result.Stop();
             return result;
@@ -219,17 +227,9 @@ namespace MsTestRunner
                               };
 
             var initMethods = allMethods.Where(IsTestInitialize).ToList();
-            if (initMethods.Count() > 1)
+            if (initMethods.Count > 1)
             {
-                testMethods.Add(
-                    Expression.Throw(
-                        Expression.New(
-                            typeof(InvalidOperationException).GetConstructor(
-                                new Type[]
-                                {
-                                    typeof(string)
-                                }),
-                            Expression.Constant(string.Format("The test {0} has more than 1 method decorated with the [TestInitialize] attribute", testClassType.Name)))));
+                testMethods.Add(ThrowMoreThanOneTestInitialize(testClassType));
             }
             else
             {
@@ -238,64 +238,85 @@ namespace MsTestRunner
                 {
                     testMethods.Add(Expression.Call(testClassInstance, initMethod));
                 }
-            }
 
-            var testCount = 0;
-            for (int i = 0; i < allMethods.Count; i++)
-            {
-                var m = allMethods[i];
-                if (IsTestMethod(m) && !IsIgnored(m))
+                var testCount = 0;
+                for (int i = 0; i < allMethods.Count; i++)
                 {
-                    var expectedExceptionType = ExpectedExceptions(m).FirstOrDefault();
-                    if (expectedExceptionType != null)
+                    var m = allMethods[i];
+                    if (IsTestMethod(m) && !IsIgnored(m))
                     {
-                        var tryBlock = Expression.Block(
-                            Expression.Call(testClassInstance, m),
-                            Expression.Throw(
-                                Expression.New(
-                                    typeof(AssertFailedException).GetConstructor(
-                                        new Type[]
-                                        {
-                                            typeof(string)
-                                        }),
-                                    Expression.Constant(string.Format("Expected exception {0} was not thrown", expectedExceptionType.Name)))));
-                        var tryCatch = Expression.TryCatch(tryBlock, Expression.Catch(expectedExceptionType, Expression.Empty()));
-                        testMethods.Add(tryCatch);
+                        testMethods.Add(InvokeTestMethod(testClassInstance, m));
+                        testCount++;
                     }
-                    else
-                    {
-                        testMethods.Add(Expression.Call(testClassInstance, m));
-                    }
-
-                    testCount++;
                 }
+
+                testMethods.Add(Expression.Constant(Task.FromResult(testCount)));
             }
-            
-            testMethods.Add(Expression.Constant(Task.FromResult(testCount)));
+
             var parameters = new[]
                              {
                                  resultsParameter,
                                  testClassInstance
                              };
 
-            Expression finallyCall = CleanupCall(testClassType, resultsParameter, testItemInstance, testClassInstance, allMethods);
+            Expression finallyCall = InvokeTestCleanup(testClassType, resultsParameter, testItemInstance, testClassInstance, allMethods);
 
             var failureExceptionParameter = Expression.Parameter(typeof(Exception));
             var tryCatchFinally = Expression.TryCatchFinally(
-                Expression.Block(parameters, testMethods), 
-                finallyCall, 
-                Expression.Catch(failureExceptionParameter, 
-                    Expression.Block(parameters,     
+                Expression.Block(parameters, testMethods),
+                finallyCall,
+                Expression.Catch(failureExceptionParameter,
+                    Expression.Block(parameters,
                         Expression.Call(
                                 resultsParameter,
                                 FailureMethod,
                                 testItemInstance,
                                 failureExceptionParameter),
                         Expression.Constant(Task.FromResult(0)))));
+
+            if (testClassType.FullName.Contains("DomainModelTypeSanity"))
+            {
+                var x = 0;
+            }
+
             return Expression.Lambda<Func<TestItem, TestRunResult, Task<int>>>(tryCatchFinally, new[] { testItemInstance, resultsParameter }).Compile();
         }
 
-        private static Expression CleanupCall(Type testClassType, ParameterExpression resultsParameter, ParameterExpression testItemInstance, ParameterExpression testClassInstance, List<MethodInfo> allMethods)
+        private static Expression InvokeTestMethod(ParameterExpression testClassInstance, MethodInfo m)
+        {
+            var expectedExceptionType = ExpectedExceptions(m).FirstOrDefault();
+            if (expectedExceptionType != null)
+            {
+                var tryBlock = Expression.Block(
+                    Expression.Call(testClassInstance, m),
+                    Expression.Throw(
+                        Expression.New(
+                            typeof(AssertFailedException).GetConstructor(
+                                new Type[]
+                                {
+                                    typeof(string)
+                                }),
+                            Expression.Constant(string.Format("Expected exception {0} was not thrown", expectedExceptionType.Name)))));
+                var tryCatch = Expression.TryCatch(tryBlock, Expression.Catch(expectedExceptionType, Expression.Empty()));
+                return tryCatch;
+            }
+
+            return Expression.Call(testClassInstance, m);
+        }
+
+        private static Expression ThrowMoreThanOneTestInitialize(Type testClassType)
+        {
+            return Expression.Throw(
+                                    Expression.New(
+                                        typeof(InvalidOperationException).GetConstructor(
+                                            new Type[]
+                                            {
+                                    typeof(string)
+                                            }),
+                                        Expression.Constant(string.Format("The test {0} has more than 1 method decorated with the [TestInitialize] attribute", testClassType.Name))));
+        }
+
+        private static Expression InvokeTestCleanup(Type testClassType, ParameterExpression resultsParameter, ParameterExpression testItemInstance, ParameterExpression testClassInstance, List<MethodInfo> allMethods)
         {
             var cleanupMethods = allMethods.Where(IsTestCleanup).ToList();
             if (cleanupMethods.Count() > 1)
@@ -325,7 +346,7 @@ namespace MsTestRunner
                 return Expression.Block(parameters, Expression.IfThen(Expression.ReferenceNotEqual(testClassInstance, Expression.Constant(null)), Expression.Call(testClassInstance, cleanupMethod)));
             }
 
-            return Expression.Empty();
+            return Expression.Constant(Task.FromResult(0));
         }
 
         private static bool IsTestCleanup(MethodInfo m)

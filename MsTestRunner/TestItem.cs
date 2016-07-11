@@ -7,6 +7,11 @@
     {
         public TestItem(string name, Func<TestItem, TestRunResult, Task<int>> execute)
         {
+            if (execute == null)
+            {
+                throw new ArgumentNullException("execute");
+            }
+
             this.Name = name;
             this.Execute = execute;
         }

@@ -86,6 +86,8 @@ namespace MsTestRunner
         {
             Interlocked.Increment(ref this.failed);
             this.failureMessagesQueue.Enqueue(message);
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Write("x");
         }
 
         public void Start()
@@ -102,6 +104,8 @@ namespace MsTestRunner
         public void Success(int testCount)
         {
             Interlocked.Add(ref this.succeeded, testCount);
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write(new string('.', testCount));
         }
 
         #endregion
