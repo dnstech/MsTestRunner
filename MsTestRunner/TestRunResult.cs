@@ -118,6 +118,10 @@ namespace MsTestRunner
         {
             this.timer.Stop();
             this.FailureMessages = this.failureMessagesQueue.ToList();
+            if (!this.quiet)
+            {
+                Console.WriteLine();
+            }
         }
 
         public void Success(int testCount)
