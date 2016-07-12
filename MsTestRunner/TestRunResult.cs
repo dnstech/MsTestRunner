@@ -19,9 +19,17 @@ namespace MsTestRunner
 
         private Stopwatch timer;
 
+        private readonly bool quiet;
+
         private readonly ConcurrentQueue<string> failureMessagesQueue = new ConcurrentQueue<string>();
 
         #endregion
+
+        public TestRunResult(bool quiet)
+        {
+            this.quiet = quiet;
+            this.FailureMessages = new List<string>();
+        }
 
         #region Public Properties
 
@@ -63,21 +71,27 @@ namespace MsTestRunner
 
         #region Public Methods and Operators
 
-        public void Failure(TestItem item, Exception error)
+        public void Failure(TestItem item, string methodName, Exception error)
         {
+            if (error == null)
+            {
+                this.ReportFailure(item.Name + " - Null error???");
+                return;
+            }
+
             if (error is AssertFailedException)
             {
-                this.ReportFailure(item.Name + " - " + error.Source + " - " + error.Message);
+                this.ReportFailure(item.Name + "." + methodName + " - " + error.Source + " - " + error.Message);
             }
             else
             {
                 if (error.GetType().Name.StartsWith("AssertFailed"))
                 {
-                    this.ReportFailure(item.Name + " - " + error.Message);
+                    this.ReportFailure(item.Name + "." + methodName + " - " + error.Message);
                 }
                 else
                 {
-                    this.ReportFailure(item.Name + " - " + error);
+                    this.ReportFailure(item.Name + "." + methodName + " - " + error);
                 }
             }
         }
@@ -86,8 +100,13 @@ namespace MsTestRunner
         {
             Interlocked.Increment(ref this.failed);
             this.failureMessagesQueue.Enqueue(message);
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Write("x");
+            if (!this.quiet)
+            {
+                var c = Console.ForegroundColor;
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("x");
+                Console.ForegroundColor = c;
+            }
         }
 
         public void Start()
@@ -104,8 +123,13 @@ namespace MsTestRunner
         public void Success(int testCount)
         {
             Interlocked.Add(ref this.succeeded, testCount);
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.Write(new string('.', testCount));
+            if (!this.quiet)
+            {
+                var c = Console.ForegroundColor;
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write(new string('.', testCount));
+                Console.ForegroundColor = c;
+            }
         }
 
         #endregion

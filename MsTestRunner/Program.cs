@@ -7,6 +7,7 @@
 namespace MsTestRunner
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
@@ -20,6 +21,8 @@ namespace MsTestRunner
             var testRunner = new TestRunner(Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
             var filter = false;
             var parallelism = false;
+
+            var testAssemblies = new List<string>();
             foreach (var arg in args)
             {
                 if (filter)
@@ -31,6 +34,10 @@ namespace MsTestRunner
                 {
                     parallelism = false;
                     testRunner.Parallelism = int.Parse(arg);
+                }
+                else if (arg.Equals("-q", StringComparison.OrdinalIgnoreCase))
+                {
+                    testRunner.QuietMode = true;
                 }
                 else if (arg.Equals("-f", StringComparison.OrdinalIgnoreCase))
                 {
@@ -46,16 +53,21 @@ namespace MsTestRunner
 
                     if (File.Exists(Path.GetFullPath(path)))
                     {
-                        testRunner.AddTestAssembly(path);
+                        testAssemblies.Add(path);
                     }
                     else if (Directory.Exists(Path.GetFullPath(path)))
                     {
                         foreach (var filePath in Directory.EnumerateFiles(path, "*Tests.dll", SearchOption.AllDirectories))
                         {
-                            testRunner.AddTestAssembly(filePath);
+                            testAssemblies.Add(path);
                         }
                     }
                 }
+            }
+
+            foreach (var assemblyFile in testAssemblies)
+            {
+                testRunner.AddTestAssembly(assemblyFile);
             }
 
             var result = testRunner.Execute();
@@ -72,7 +84,7 @@ namespace MsTestRunner
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("{0} Failed", result.Failed);
             }
-                
+
             Console.ForegroundColor = ConsoleColor.White;
 
             var interactive = args.Contains("-i", StringComparer.OrdinalIgnoreCase);

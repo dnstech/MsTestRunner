@@ -3,7 +3,7 @@
     using System;
     using System.Threading.Tasks;
 
-    public struct TestItem
+    public sealed class TestItem
     {
         public TestItem(string name, Func<TestItem, TestRunResult, Task<int>> execute)
         {
