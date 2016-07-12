@@ -23,6 +23,8 @@ namespace MsTestRunner
 
         private readonly ConcurrentQueue<string> failureMessagesQueue = new ConcurrentQueue<string>();
 
+        private readonly ConcurrentQueue<string> passedTestsQueue = new ConcurrentQueue<string>();
+
         #endregion
 
         public TestRunResult(bool quiet)
@@ -39,6 +41,12 @@ namespace MsTestRunner
             {
                 return Interlocked.Read(ref this.failed);
             }
+        }
+
+        public List<string> PassedTests
+        {
+            get;
+            private set;
         }
 
         public IList<string> FailureMessages { get; private set; }
@@ -124,14 +132,19 @@ namespace MsTestRunner
             }
         }
 
-        public void Success(int testCount)
+        public void Success(TestItem item, int testCount)
         {
-            Interlocked.Add(ref this.succeeded, testCount);
+            foreach (var m in item.Tests)
+            {
+                this.passedTestsQueue.Enqueue(item.Name + "." + m);
+            }
+
+            Interlocked.Add(ref this.succeeded, 1);
             if (!this.quiet)
             {
                 var c = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.Write(new string('.', testCount));
+                Console.Write(".");
                 Console.ForegroundColor = c;
             }
         }

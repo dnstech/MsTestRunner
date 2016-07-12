@@ -109,7 +109,7 @@ namespace MsTestRunner
                             });
                     }
 
-                    this.testList.Add(new TestItem(testClassType.FullName, this.CreateTestInvoker(testClassType)));
+                    this.testList.Add(this.CreateTestInvoker(testClassType));
                 }
             }
         }
@@ -128,17 +128,16 @@ namespace MsTestRunner
                 {
                     MaxDegreeOfParallelism = this.Parallelism
                 },
-                async a =>
+                async testItem =>
                     {
                         try
                         {
-                            var t = a.Execute(a, result);
-                            var testCount = await t;
-                            result.Success(testCount);
+                            var successCount = await testItem.Execute(testItem, result).ConfigureAwait(false);
+                            result.Success(testItem, successCount);
                         }
                         catch (Exception ex)
                         {
-                            result.Failure(a, string.Empty, ex);
+                            result.Failure(testItem, string.Empty, ex);
                         }
                     });
             result.Stop();
@@ -244,8 +243,9 @@ namespace MsTestRunner
         /// </summary>
         /// <param name="testClassType"></param>
         /// <returns></returns>
-        private Func<TestItem, TestRunResult, Task<int>> CreateTestInvoker(Type testClassType)
+        private TestItem CreateTestInvoker(Type testClassType)
         {
+            // new TestItem(testClassType.FullName,
             var taskResult = Expression.Variable(typeof(Task), "taskResult");
             var lastTestMethod = Expression.Variable(typeof(string), "lastTestMethod");
             var testItemInstance = Expression.Parameter(typeof(TestItem), "testItem");
@@ -253,17 +253,13 @@ namespace MsTestRunner
             var resultsParameter = Expression.Parameter(typeof(TestRunResult), "results");
             var allMethods = testClassType.GetRuntimeMethods().ToList();
 
-            if (testClassType.FullName.Contains("DomainModelTypeSanity"))
-            {
-                var x = 0;
-            }
-
             var outerExpressions = new List<Expression>(2)
                               {
                                   Expression.Assign(lastTestMethod, Expression.Constant("ctor")),
                                   Expression.Assign(testClassInstance, Expression.New(testClassType.GetConstructor(new Type[0])))
                               };
 
+            var testMethodNames = new List<string>(allMethods.Count);
             var testMethods = new List<Expression>(allMethods.Count);
             var initMethods = allMethods.Where(IsTestInitialize).ToList();
             if (initMethods.Count > 1)
@@ -276,15 +272,9 @@ namespace MsTestRunner
                 if (initMethod != null)
                 {
                     Expression.Assign(lastTestMethod, Expression.Constant(initMethod.Name));
-                    if (IsAsyncMethod(initMethod))
-                    {
-                        testMethods.Add(Expression.Assign(taskResult, Expression.Call(testClassInstance, initMethod)));
-                        testMethods.Add(Expression.Call(taskResult, TaskWaitMethod));
-                    }
-                    else
-                    {
-                        testMethods.Add(Expression.Call(testClassInstance, initMethod));
-                    }
+
+                    var testCall = IsAsyncMethod(initMethod) ? Expression.Call(Expression.Call(testClassInstance, initMethod), TaskWaitMethod) : Expression.Call(testClassInstance, initMethod);
+                    testMethods.Add(testCall);
                 }
 
                 var testCount = 0;
@@ -295,6 +285,7 @@ namespace MsTestRunner
                     {
                         Expression.Assign(lastTestMethod, Expression.Constant(m.Name));
                         testMethods.Add(InvokeTestMethod(testClassInstance, m));
+                        testMethodNames.Add(m.Name);
                         testCount++;
                     }
                 }
@@ -315,15 +306,11 @@ namespace MsTestRunner
 
             var failureExceptionParameter = Expression.Parameter(typeof(Exception), "testFailureException");
 
-            var catchParameters = new ParameterExpression[]
-            {
-            };
-
             var innerTryCatchFinally = Expression.TryCatchFinally(
                 Expression.Block(parameters, testMethods),
                 finallyCall,
                 Expression.Catch(failureExceptionParameter,
-                    Expression.Block(catchParameters,
+                    Expression.Block(new ParameterExpression[] { },
                         //Expression.Call(typeof(TestRunner).GetMethod("LogException"), new Expression[] { failureExceptionParameter, copyOfResultsVariable }),
                         Expression.Call(
                                 resultsParameter,
@@ -341,7 +328,8 @@ namespace MsTestRunner
                     testClassInstance
                 },
                 outerExpressions.ToArray());
-            return Expression.Lambda<Func<TestItem, TestRunResult, Task<int>>>(outerBlock, testClassType.Name, new[] { testItemInstance, resultsParameter }).Compile();
+            var execute = Expression.Lambda<Func<TestItem, TestRunResult, Task<int>>>(outerBlock, testClassType.Name, new[] { testItemInstance, resultsParameter }).Compile();
+            return new TestItem(testClassType.FullName, execute, testMethodNames);
         }
 
         private static Expression InvokeTestMethod(ParameterExpression testClassInstance, MethodInfo m)
@@ -440,7 +428,7 @@ namespace MsTestRunner
 
         private static bool IsTestMethod(MethodInfo m)
         {
-            return m.ReturnType == typeof(void) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute");
+            return (m.ReturnType == typeof(void) || IsAsyncMethod(m)) && m.GetCustomAttributes().Any(c => c.GetType().Name == "TestMethodAttribute");
         }
 
         private static bool IsIgnored(MethodInfo m)
