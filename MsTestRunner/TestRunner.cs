@@ -66,6 +66,7 @@ namespace MsTestRunner
         public void AddTestAssembly(string filePath)
         {
             var testClasses = new List<Type>();
+            var deploymentsByType = new Dictionary<Type, Tuple<string, List<Tuple<string, string>>>>();
             if (this.testAssemblyFileNames.Add(Path.GetFileName(filePath)))
             {
                 try
@@ -74,10 +75,14 @@ namespace MsTestRunner
                     var allTypes = Assembly.LoadFrom(assemblyToLoad).GetTypes();
                     foreach (var type in allTypes)
                     {
-                        if (IsTestClass(type) && !IsIgnored(type) && this.IsIncludedInFilter(type))
+                        if (IsTestClass(type) && !IsIgnored(type))
                         {
-                            var deploymentItems = DeploymentItems(type);
-                            this.IncludeDeploymentItems(assemblyToLoad, deploymentItems);
+                            var deploymentItems = DeploymentItems(type).ToList();
+                            if (deploymentItems.Any())
+                            {
+                                deploymentsByType[type] = Tuple.Create(assemblyToLoad, deploymentItems);
+                            }
+
                             testClasses.Add(type);
                         }
                     }
@@ -89,10 +94,10 @@ namespace MsTestRunner
                 }
             }
 
-            this.AddTestClasses(testClasses);
+            this.AddTestClasses(testClasses, deploymentsByType);
         }
 
-        public void AddTestClasses(IEnumerable<Type> testClassTypes)
+        public void AddTestClasses(IEnumerable<Type> testClassTypes, Dictionary<Type, Tuple<string, List<Tuple<string, string>>>> deploymentsByType)
         {
             foreach (var testClassType in testClassTypes)
             {
@@ -109,7 +114,17 @@ namespace MsTestRunner
                             });
                     }
 
-                    this.testList.Add(this.CreateTestInvoker(testClassType));
+                    var testInvoker = this.CreateTestInvoker(testClassType);
+                    if (this.IsIncludedInFilter(testInvoker))
+                    {
+                        if (deploymentsByType.ContainsKey(testClassType))
+                        {
+                            var d = deploymentsByType[testClassType];
+                            this.IncludeDeploymentItems(d.Item1, d.Item2);
+                        }
+
+                        this.testList.Add(testInvoker);
+                    }
                 }
             }
         }
@@ -209,9 +224,9 @@ namespace MsTestRunner
             }
         }
 
-        private bool IsIncludedInFilter(Type type)
+        private bool IsIncludedInFilter(TestItem testItem)
         {
-            return this.filters.Count == 0 || this.filters.Any(f => type.FullName.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1);
+            return this.filters.Count == 0 || this.filters.Any(f => testItem.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1 || testItem.Tests.Any(t => (testItem.Name + "." + t).IndexOf(f, StringComparison.OrdinalIgnoreCase) != -1));
         }
 
         private void CopyDeploymentFiles()

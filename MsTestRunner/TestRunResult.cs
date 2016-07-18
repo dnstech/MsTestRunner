@@ -139,7 +139,7 @@ namespace MsTestRunner
                 this.passedTestsQueue.Enqueue(item.Name + "." + m);
             }
 
-            Interlocked.Add(ref this.succeeded, 1);
+            Interlocked.Add(ref this.succeeded, testCount);
             if (!this.quiet)
             {
                 var c = Console.ForegroundColor;
