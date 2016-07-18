@@ -25,6 +25,10 @@ namespace MsTestRunner
 
         private readonly ConcurrentQueue<string> passedTestsQueue = new ConcurrentQueue<string>();
 
+        private readonly ConcurrentDictionary<string, bool> failedTests = new ConcurrentDictionary<string, bool>();
+
+        private readonly ConcurrentBag<TestResult> tests = new ConcurrentBag<TestResult>();
+
         #endregion
 
         public TestRunResult(bool quiet)
@@ -43,10 +47,12 @@ namespace MsTestRunner
             }
         }
 
-        public List<string> PassedTests
+        public List<TestResult> Tests
         {
-            get;
-            private set;
+            get
+            {
+                return this.tests.ToList();
+            }
         }
 
         public IList<string> FailureMessages { get; private set; }
@@ -81,27 +87,45 @@ namespace MsTestRunner
 
         public void Failure(TestItem item, string methodName, Exception error)
         {
+            string errorMessage;
+
             if (error == null)
             {
-                this.ReportFailure(item.Name + " - Null error???");
-                return;
+                errorMessage = "Null error???";
             }
-
-            if (error is AssertFailedException)
+            else if (error is AssertFailedException)
             {
-                this.ReportFailure(item.Name + "." + methodName + " - " + error.Source + " - " + error.Message);
+                errorMessage = error.Source + " - " + error.Message;
             }
             else
             {
                 if (error.GetType().Name.StartsWith("AssertFailed"))
                 {
-                    this.ReportFailure(item.Name + "." + methodName + " - " + error.Message);
+                    errorMessage = error.Source + " - " + error.Message;
                 }
                 else
                 {
-                    this.ReportFailure(item.Name + "." + methodName + " - " + error);
+                    errorMessage = error.Source + " - " + error;
                 }
             }
+
+            if (string.IsNullOrEmpty(methodName) || methodName == "ctor")
+            {
+                foreach (var m in item.Tests)
+                {
+                    var key = item.Name + "." + m;
+                    this.failedTests.GetOrAdd(key, true);
+                    this.tests.Add(new TestResult(key, errorMessage, false, TimeSpan.FromSeconds(1)));
+                }
+            }
+            else
+            {
+                var key = item.Name + "." + methodName;
+                this.failedTests.GetOrAdd(key, true);
+                this.tests.Add(new TestResult(key, errorMessage, false, TimeSpan.FromSeconds(1)));
+            }
+
+            this.ReportFailure(item.Name + "." + methodName + " - " + errorMessage);
         }
 
         private void ReportFailure(string message)
@@ -136,11 +160,22 @@ namespace MsTestRunner
         {
             foreach (var m in item.Tests)
             {
-                this.passedTestsQueue.Enqueue(item.Name + "." + m);
+                var key = item.Name + "." + m;
+                if (!this.failedTests.ContainsKey(key))
+                {
+                    this.passedTestsQueue.Enqueue(key);
+                    this.tests.Add(new TestResult(key, null, true, TimeSpan.FromSeconds(1)));
+                }
+                else
+                {
+                    // No tests following here have been run
+                    // should be ignored/not run
+                    break;
+                }
             }
 
             Interlocked.Add(ref this.succeeded, testCount);
-            if (!this.quiet)
+            if (testCount > 0 && !this.quiet)
             {
                 var c = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Green;

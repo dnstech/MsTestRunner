@@ -139,7 +139,7 @@ namespace MsTestRunner
             result.Start();
             Parallel.ForEach(
                 this.testList,
-                new ParallelOptions()
+                new ParallelOptions
                 {
                     MaxDegreeOfParallelism = this.Parallelism
                 },
@@ -280,13 +280,14 @@ namespace MsTestRunner
             if (initMethods.Count > 1)
             {
                 testMethods.Add(ThrowMoreThanOneTestInitialize(testClassType));
+                testMethods.Add(Expression.Constant(Task.FromResult(0)));
             }
             else
             {
                 var initMethod = initMethods.FirstOrDefault();
                 if (initMethod != null)
                 {
-                    Expression.Assign(lastTestMethod, Expression.Constant(initMethod.Name));
+                    testMethods.Add(Expression.Assign(lastTestMethod, Expression.Constant(initMethod.Name)));
 
                     var testCall = IsAsyncMethod(initMethod) ? Expression.Call(Expression.Call(testClassInstance, initMethod), TaskWaitMethod) : Expression.Call(testClassInstance, initMethod);
                     testMethods.Add(testCall);
@@ -298,7 +299,7 @@ namespace MsTestRunner
                     var m = allMethods[i];
                     if (IsTestMethod(m) && !IsIgnored(m))
                     {
-                        Expression.Assign(lastTestMethod, Expression.Constant(m.Name));
+                        testMethods.Add(Expression.Assign(lastTestMethod, Expression.Constant(m.Name)));
                         testMethods.Add(InvokeTestMethod(testClassInstance, m));
                         testMethodNames.Add(m.Name);
                         testCount++;
@@ -326,7 +327,6 @@ namespace MsTestRunner
                 finallyCall,
                 Expression.Catch(failureExceptionParameter,
                     Expression.Block(new ParameterExpression[] { },
-                        //Expression.Call(typeof(TestRunner).GetMethod("LogException"), new Expression[] { failureExceptionParameter, copyOfResultsVariable }),
                         Expression.Call(
                                 resultsParameter,
                                 FailureMethod,

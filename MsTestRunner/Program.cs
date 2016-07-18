@@ -21,6 +21,7 @@ namespace MsTestRunner
             var testRunner = new TestRunner(Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
             var filter = false;
             var parallelism = false;
+            string trxPath = null;
 
             var testAssemblies = new List<string>();
             foreach (var arg in args)
@@ -47,6 +48,10 @@ namespace MsTestRunner
                 {
                     parallelism = true;
                 }
+                else if (arg.StartsWith("/resultsfile:", StringComparison.OrdinalIgnoreCase))
+                {
+                    trxPath = arg.Substring("/resultsfile:".Length);
+                }
                 else if (!arg.StartsWith("-"))
                 {
                     var path = arg.StartsWith("/testcontainer:") ? arg.Substring("/testcontainer:".Length) : arg;
@@ -59,7 +64,7 @@ namespace MsTestRunner
                     {
                         foreach (var filePath in Directory.EnumerateFiles(path, "*Tests.dll", SearchOption.AllDirectories))
                         {
-                            testAssemblies.Add(path);
+                            testAssemblies.Add(filePath);
                         }
                     }
                 }
@@ -71,6 +76,12 @@ namespace MsTestRunner
             }
 
             var result = testRunner.Execute();
+
+            if (trxPath != null)
+            {
+                TrxGenerator.Generate(trxPath, result);
+            }
+
             Console.ForegroundColor = ConsoleColor.Gray;
             Console.WriteLine("Took {0} to Run {1} Tests", result.TimeTaken, result.Succeeded + result.Failed);
             if (result.Succeeded > 0)
