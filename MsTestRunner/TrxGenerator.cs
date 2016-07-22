@@ -71,7 +71,8 @@ namespace MsTestRunner
                 new XElement(ns + "TestMethod",
                      new XAttribute("codeBase", string.Empty),
                      new XAttribute("adapterTypeName", string.Empty),
-                     new XAttribute("className", string.Empty)));
+                     new XAttribute("className", string.Empty),
+                     new XAttribute("name", test.Name)));
         }
 
         private static XElement TestEntry(TestResult test, Guid testListId)
