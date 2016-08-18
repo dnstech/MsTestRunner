@@ -83,7 +83,8 @@ namespace MsTestRunner
             }
 
             Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine("Took {0} to Run {1} Tests", result.TimeTaken, result.Succeeded + result.Failed);
+
+            Console.WriteLine("Took {0} to Run {1} Tests Completed at {2}", result.TimeTaken, result.Succeeded + result.Failed, DateTime.Now.ToString("s"));
             if (result.Succeeded > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
