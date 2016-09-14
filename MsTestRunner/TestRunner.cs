@@ -73,6 +73,7 @@ namespace MsTestRunner
                 {
                     var assemblyToLoad = Path.GetFullPath(filePath);
                     var allTypes = Assembly.LoadFrom(assemblyToLoad).GetTypes();
+
                     foreach (var type in allTypes)
                     {
                         if (IsTestClass(type) && !IsIgnored(type))
@@ -91,6 +92,22 @@ namespace MsTestRunner
                 {
                     Console.WriteLine("Ignoring {0} due to file exception", filePath);
                     return;
+                }
+                catch (ReflectionTypeLoadException reflectionTypeLoadException)
+                {
+                    var loaderExceptionFullDetail = new StringBuilder();
+
+                    Console.WriteLine("Failed loading assembly " + filePath + " - unable to load one or more of the requested types. Loader exceptions follow:");
+                    foreach (var loaderException in reflectionTypeLoadException.LoaderExceptions)
+                    {
+                        Console.WriteLine(" >>> " + loaderException.Message);
+                        loaderExceptionFullDetail.AppendLine(loaderException.ToString());
+                    }
+
+                    // Write dump of loaderexception to file in current directory
+                    const string loaderExceptionDetailsFileName = ".\\LoaderExceptions.txt";
+                    Console.WriteLine("Writing all loader exception details to " + loaderExceptionDetailsFileName);
+                    File.WriteAllText(loaderExceptionDetailsFileName, loaderExceptionFullDetail.ToString());
                 }
             }
 
