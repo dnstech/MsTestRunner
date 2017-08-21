@@ -29,6 +29,12 @@ This tells the test runner to filter the test classes to those that have MathTes
     MsTestRunner "C:\MyCode\bin\Debug" -i
 This enables interactive results mode where UP and DOWN arrow keys can be used to navigate through test failures.
 
+#### Generating TRX output
+
+   MsTestRunner /resultsfile:MyResults.trx
+   
+Tells the test runner to output its test results into a simplified Visual Studio compatible TRX xml format.
+
 ## Differences between MsTestRunner and Visual Studio's Test Runner
 The execution semantics of this test runner differ from that of Visual Studio's in the following ways.
 
