@@ -31,7 +31,7 @@ This enables interactive results mode where UP and DOWN arrow keys can be used t
 
 #### Generating TRX output
 
-   MsTestRunner /resultsfile:MyResults.trx
+    MsTestRunner /resultsfile:MyResults.trx
    
 Tells the test runner to output its test results into a simplified Visual Studio compatible TRX xml format.
 
