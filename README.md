@@ -37,8 +37,9 @@ The execution semantics of this test runner differ from that of Visual Studio's 
 * Failures are reported for the first failing test at the class level (i.e. if the first test method fails it is reported and further methods on the instance are not called)
 * No .trx output at the moment (planned)
 * Does not require a reference to Microsoft.VisualStudio.QualityTools.UnitTestFramework, nor does it require that it is built with a special Ms Test project. It just looks for classes and methods decorated with attributes that follow the names and rules below:
-** TestClassAttribute - must be declared on the class
-** ClassInitializeAttribute - must be zero or one static method inside a TestClassAttribute decorated class
-** ClassCleanupAttribute - must be zero or one static method inside a TestClassAttribute decorated class
-** TestInitializeAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class
-** TestCleanupAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class
+
+  1. TestClassAttribute - must be declared on the class
+  2. ClassInitializeAttribute - must be zero or one static method inside a TestClassAttribute decorated class
+  3. ClassCleanupAttribute - must be zero or one static method inside a TestClassAttribute decorated class
+  4. TestInitializeAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class
+  5. TestCleanupAttribute - Must be zero or one method decorated with this attribute inside a TestClassAttribute decorated class
