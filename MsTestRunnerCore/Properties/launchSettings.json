@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "MsTestRunnerCore": {
+      "commandName": "Project",
+      "commandLineArgs": " /testcontainer:DomainModel.UnitTests\\bin\\debug\\DomainModel.UnitTests.dll"
+    }
+  }
+}
