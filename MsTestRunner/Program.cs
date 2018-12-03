@@ -11,6 +11,7 @@ namespace MsTestRunner
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using MsTestRunner.Common;
 
     internal class Program
     {

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.31101.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2050
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MsTestRunner", "MsTestRunner\MsTestRunner.csproj", "{14C4921C-A5B4-4D45-875D-BA9EF35FCAEA}"
 EndProject
@@ -10,6 +10,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		LICENSE.md = LICENSE.md
 		README.md = README.md
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MsTestRunner.Common", "MsTestRunner.Common\MsTestRunner.Common.csproj", "{7A922329-5299-4C68-AFEE-F7AE5AC10572}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,8 +23,15 @@ Global
 		{14C4921C-A5B4-4D45-875D-BA9EF35FCAEA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{14C4921C-A5B4-4D45-875D-BA9EF35FCAEA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{14C4921C-A5B4-4D45-875D-BA9EF35FCAEA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7A922329-5299-4C68-AFEE-F7AE5AC10572}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A922329-5299-4C68-AFEE-F7AE5AC10572}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A922329-5299-4C68-AFEE-F7AE5AC10572}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A922329-5299-4C68-AFEE-F7AE5AC10572}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2E0E330E-6D99-4436-A8F5-63DB18CC6956}
 	EndGlobalSection
 EndGlobal
