@@ -6,7 +6,7 @@
     public sealed class TestResult
     {
         private static readonly HashAlgorithm Provider = new SHA1CryptoServiceProvider();
-            
+
         public TestResult(string name, string output, bool success, TimeSpan duration)
         {
             this.Name = name;
