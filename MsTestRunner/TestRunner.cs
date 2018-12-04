@@ -7,6 +7,7 @@
 namespace MsTestRunner
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
@@ -35,6 +36,8 @@ namespace MsTestRunner
 
         private TextWriter originalConsoleOut;
 
+        private readonly ConcurrentDictionary<string, string[]> missingAssemblies = new ConcurrentDictionary<string, string[]>();
+
         #endregion
 
         #region Constructors and Destructors
@@ -55,6 +58,8 @@ namespace MsTestRunner
             get;
             set;
         }
+
+        public bool NoDeploy { get; set; }
 
         public void AddFilter(string text)
         {
@@ -151,30 +156,67 @@ namespace MsTestRunner
             this.InitializeQuietMode();
             Directory.CreateDirectory(this.path);
             Directory.SetCurrentDirectory(this.path);
-            this.CopyDeploymentFiles();
+            AppDomain.CurrentDomain.AssemblyResolve += this.TestRunnerResolveAssembly;
+            if (!this.NoDeploy)
+            {
+                this.CopyDeploymentFiles();
+            }
+
             var result = new TestRunResult(this.QuietMode);
-            result.Start();
-            Parallel.ForEach(
-                this.testList,
-                new ParallelOptions
-                {
-                    MaxDegreeOfParallelism = this.Parallelism
-                },
-                async testItem =>
+            try
+            {
+                result.Start();
+                Parallel.ForEach(
+                    this.testList,
+                    new ParallelOptions
                     {
-                        try
+                        MaxDegreeOfParallelism = this.Parallelism
+                    },
+                    async testItem =>
                         {
-                            var successCount = await testItem.Execute(testItem, result).ConfigureAwait(false);
-                            result.Success(testItem, successCount);
-                        }
-                        catch (Exception ex)
-                        {
-                            result.Failure(testItem, string.Empty, ex);
-                        }
-                    });
-            result.Stop();
-            this.StopQuietMode();
+                            try
+                            {
+                                var successCount = await testItem.Execute(testItem, result).ConfigureAwait(false);
+                                result.Success(testItem, successCount);
+                            }
+                            catch (Exception ex)
+                            {
+                                result.Failure(testItem, string.Empty, ex);
+                            }
+                        });
+            }
+            finally
+            {
+                result.Stop();
+                AppDomain.CurrentDomain.AssemblyResolve -= this.TestRunnerResolveAssembly;
+                this.StopQuietMode();
+            }
+
             return result;
+        }
+
+        private Assembly TestRunnerResolveAssembly(object sender, ResolveEventArgs args)
+        {
+            var assemblyName = new AssemblyName(args.Name);
+
+            var checkedFiles = new List<string>();
+            foreach (var fileName in Directory.EnumerateFiles(this.path, "*.dll"))
+            {
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                if (string.Equals(assemblyName.Name, fileNameWithoutExt, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Assembly.LoadFrom(fileName);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"{assemblyName.Name} != {fileNameWithoutExt}");
+                    checkedFiles.Add(fileNameWithoutExt);
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"Could not find {assemblyName.Name}");
+            this.missingAssemblies.TryAdd(assemblyName.Name, checkedFiles.ToArray());
+            return null;
         }
 
         private void InitializeQuietMode()
@@ -253,7 +295,7 @@ namespace MsTestRunner
                 if (File.Exists(filePath.Value))
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("The Deployment Item {0} has the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
+                    Console.WriteLine("The Deployment Item {0} may have the same File Name as another Deployment Item, please add an output directory path to each of the deployment items", filePath.Value);
                 }
                 else
                 {

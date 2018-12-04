@@ -14,45 +14,13 @@ namespace MsTestRunner
 
     internal class Program
     {
-        #region Methods
-
         private static int Main(string[] args)
         {
-            var testRunner = new TestRunner(Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss")));
-            var filter = false;
-            var parallelism = false;
-            string trxPath = null;
 
             var testAssemblies = new List<string>();
             foreach (var arg in args)
             {
-                if (filter)
-                {
-                    filter = false;
-                    testRunner.AddFilter(arg);
-                }
-                else if (parallelism)
-                {
-                    parallelism = false;
-                    testRunner.Parallelism = int.Parse(arg);
-                }
-                else if (arg.Equals("-q", StringComparison.OrdinalIgnoreCase))
-                {
-                    testRunner.QuietMode = true;
-                }
-                else if (arg.Equals("-f", StringComparison.OrdinalIgnoreCase))
-                {
-                    filter = true;
-                }
-                else if (arg.Equals("-p", StringComparison.OrdinalIgnoreCase))
-                {
-                    parallelism = true;
-                }
-                else if (arg.StartsWith("/resultsfile:", StringComparison.OrdinalIgnoreCase))
-                {
-                    trxPath = arg.Substring("/resultsfile:".Length);
-                }
-                else if (!arg.StartsWith("-"))
+                if (!arg.StartsWith("-") && !arg.StartsWith("/resultsfile:"))
                 {
                     var path = arg.StartsWith("/testcontainer:") ? arg.Substring("/testcontainer:".Length) : arg;
 
@@ -70,43 +38,84 @@ namespace MsTestRunner
                 }
             }
 
+            int failureCount = 0;
             foreach (var assemblyFile in testAssemblies)
             {
+                // output path = Path.Combine(Environment.CurrentDirectory, "TestResults", DateTime.Now.ToString("yyyy-MM-dd-hh-mm-ss"));
+                var testRunner = new TestRunner(Path.GetDirectoryName(assemblyFile));
+                var filter = false;
+                var parallelism = false;
+                string trxPath = null;
+
+                foreach (var arg in args)
+                {
+                    if (filter)
+                    {
+                        filter = false;
+                        testRunner.AddFilter(arg);
+                    }
+                    else if (parallelism)
+                    {
+                        parallelism = false;
+                        testRunner.Parallelism = int.Parse(arg);
+                    }
+                    else if (arg.Equals("-q", StringComparison.OrdinalIgnoreCase))
+                    {
+                        testRunner.QuietMode = true;
+                    }
+                    else if (arg.Equals("-f", StringComparison.OrdinalIgnoreCase))
+                    {
+                        filter = true;
+                    }
+                    else if (arg.Equals("-p", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parallelism = true;
+                    }
+                    else if (arg.Equals("-nodeploy", StringComparison.OrdinalIgnoreCase))
+                    {
+                        testRunner.NoDeploy = true;
+                    }
+                    else if (arg.StartsWith("/resultsfile:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        trxPath = arg.Substring("/resultsfile:".Length);
+                    }
+                }
+
                 testRunner.AddTestAssembly(assemblyFile);
-            }
 
-            var result = testRunner.Execute();
+                var result = testRunner.Execute();
+                failureCount = result.Failed < int.MaxValue ? failureCount + (int)result.Failed : int.MaxValue;
+                if (trxPath != null)
+                {
+                    TrxGenerator.Generate(trxPath, result);
+                }
 
-            if (trxPath != null)
-            {
-                TrxGenerator.Generate(trxPath, result);
-            }
+                Console.ForegroundColor = ConsoleColor.Gray;
 
-            Console.ForegroundColor = ConsoleColor.Gray;
+                Console.WriteLine("Took {0} to Run {1} Tests Completed at {2}", result.TimeTaken, result.Succeeded + result.Failed, DateTime.Now.ToString("s"));
+                if (result.Succeeded > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("{0} Succeeded", result.Succeeded);
+                }
 
-            Console.WriteLine("Took {0} to Run {1} Tests Completed at {2}", result.TimeTaken, result.Succeeded + result.Failed, DateTime.Now.ToString("s"));
-            if (result.Succeeded > 0)
-            {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("{0} Succeeded", result.Succeeded);
-            }
+                if (result.Failed > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("{0} Failed", result.Failed);
+                }
 
-            if (result.Failed > 0)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("{0} Failed", result.Failed);
-            }
+                Console.ForegroundColor = ConsoleColor.White;
 
-            Console.ForegroundColor = ConsoleColor.White;
-
-            var interactive = args.Contains("-i", StringComparer.OrdinalIgnoreCase);
-            if (interactive)
-            {
-                InteractiveMode(result);
-            }
-            else
-            {
-                ListFailures(result);
+                var interactive = args.Contains("-i", StringComparer.OrdinalIgnoreCase);
+                if (interactive)
+                {
+                    InteractiveMode(result);
+                }
+                else
+                {
+                    ListFailures(result);
+                }
             }
 
             Console.ForegroundColor = ConsoleColor.Gray;
@@ -116,7 +125,7 @@ namespace MsTestRunner
                 Console.ReadKey();
             }
 
-            return result.Failed < int.MaxValue ? (int)result.Failed : int.MaxValue;
+            return failureCount < int.MaxValue ? failureCount : int.MaxValue;
         }
 
         private static void ListFailures(TestRunResult result)
@@ -160,7 +169,5 @@ namespace MsTestRunner
 
             Console.ReadKey();
         }
-
-        #endregion
     }
 }
