@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0</TargetFramework>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <InformationalVersion>1.0.0.0</InformationalVersion>
     <RootNamespace>MsTestRunner</RootNamespace>
