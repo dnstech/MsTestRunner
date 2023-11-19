@@ -264,6 +264,7 @@ namespace MsTestRunner
                     }
                     else
                     {
+                        Directory.CreateDirectory(Path.GetDirectoryName(filePath.Value));
                         File.Copy(filePath.Key, filePath.Value);
                     }
                 }
